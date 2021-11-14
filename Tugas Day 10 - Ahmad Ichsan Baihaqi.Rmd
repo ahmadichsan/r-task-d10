@@ -1,0 +1,183 @@
+**Homework Day 10**
+
+**Author: Ahmad Ichsan Baihaqi**
+
+**Email: ahmadichsanbaihaqi@gmail.com**
+
+```{r}
+library(readr)
+
+data_set = read.csv("train.csv", header=T, na.strings='')
+# View(data_set)
+```
+
+1. Pilih kolom ID, Condition1, OverallCond, YearBuilt, dan FullBath yang mana GrLivArea nya = 1717 atau 2324, jelaskan fungsi apa yang akan digunakan dan kenapa!
+a. Fungsi yang digunakan adalah fungsi filter dan select
+b. Fungsi filter digunakan untuk memilih baris data sesuai dengan kondisi yang diinginkan. Dalam kasus ini, kondisi yang diingin kan adalah data dengan GrLivArea = 1717 ATAU GrLivArea = 2324
+c. Fungsi select digunakan untuk memilih kolom dari dataset. Pada kasus ini, select digunakan untuk memilih kolom tertentu berdasarkan data hasil filter pada poin b
+d. code %>% adalah pipe operator yang digunakan untuk chaining method. Hal ini berguna untuk meningkatkan readability code dan bisa mendapatkan output yang sama dengan less code
+```{r}
+library(tidyverse)
+
+## Ada 4 data
+data_set %>% 
+  filter(GrLivArea == 1717 | GrLivArea == 2324) %>%
+  select(Id, Condition1, OverallCond, YearBuilt, FullBath)
+```
+
+2. Pada tahun berapa yang paling banyak membangun rumah dimana GarageCond: Garage condition = Ex Excellent
+```{r}
+## Cek possible value untuk GarageConde
+# data_set %>% 
+#   distinct(GarageCond)
+
+garage_cond_ex = data_set %>% 
+  filter(GarageCond == "Ex") %>% 
+  select(YearBuilt)
+
+# View(garage_cond_ex)
+
+mode = function(x) {
+  ux = unique(x)
+  ux[which.max(tabulate(match(x, ux)))]
+}
+
+## GarageCond == "Ex" hanya ada dua data dan keduanya pada tahun yang berbeda
+## Dapat dikatakan bahwa tidak modus/tahun yang paling banyak terjadi pembangunan rumah
+## Dengan kondisi GarageCond == "Ex"
+mode_data = mode(garage_cond_ex$YearBuilt)
+mode_data
+```
+
+3. Rata-rata penjualan rumah tertinggi pada tahun berapa?
+```{r}
+## untuk mendapatkan rata-rata pada tiap tahun penjualan
+# data_set %>%
+#   group_by(YrSold) %>% 
+#   summarise(average_sold = mean(SalePrice)) %>% 
+#   arrange(desc(average_sold))
+
+## untuk mendapatkan satu data dengan average paling tinggi
+data_set %>%
+  group_by(YrSold) %>% 
+  summarise(average_sold = mean(SalePrice)) %>% 
+  arrange(desc(average_sold)) %>% 
+  top_n(1, average_sold)
+```
+4. Apakah YearBuilt dan YearRemodAdd ditahun yang sama mempunyai penjualan yang tinggi?
+a. asumsi bahwa maksud pertanyaan ini adalah "Apakah data yang memiliki YearBuilt dan YearRemodAdd dengan nilai yang sama akan memiliki penjualan (sale price rata-rata) yang tinggi dibandingkan dengan yang YearBuilt-nya tidak sama dengan YearRemodAdd-nya?"
+```{r}
+sale_price_same_year = data_set %>% 
+  filter(YearBuilt == YearRemodAdd) %>% 
+  select(SalePrice)
+sale_price_diff_year = data_set %>% 
+  filter(YearBuilt != YearRemodAdd) %>% 
+  select(SalePrice)
+
+sale_price_same_year_mean = mean(sale_price_same_year$SalePrice)
+sale_price_diff_year_mean = mean(sale_price_diff_year$SalePrice)
+
+## Jawaban: ya, data dengan value YearBuilt sama dengan value YearRemodAdd memiliki rata-rata penjualan (sale price) yang lebih tinggi dibandingkan dengan rata-rata penjualan (sale price) data yang YearBuilt-nya berbeda dengan YearRemodAdd-nya
+sale_price_same_year_mean > sale_price_diff_year_mean
+```
+
+5. Buat kolom baru dengan nama UsiaRumah setelah YearRemodeAll
+```{r}
+library(lubridate)
+
+get_usia_rumah = function(year_built) {
+  origin_date = paste0(year_built, "-01-01")
+  today = Sys.Date()
+  return (time_length(
+    difftime(
+      as.Date(today, format = "%Y-%m-%d"),
+      as.Date(origin_date)),
+    "years"
+  ))
+}
+
+data_set = data_set %>% 
+  mutate(UsiaRumah = get_usia_rumah(YearBuilt), .after = "YearRemodAdd")
+
+data_set
+# View(data_set)
+```
+
+6. Buatlah Feature Engineering dari kolom YearBuilt, OverallQual, YearRemodAdd, YrSold dan MoSold minimal 10 feature baru
+a. YearBuilt = Original construction date
+b. OverallQual = Overall material and finish quality
+c. YearRemodAdd = Remodel date
+d. YrSold = Year Sold
+e. MoSold = Month Sold
+
+New Feature:
+1. GapBetweenRemodAndBuilt => YearRemodAdd - YearBuilt
+2. GapBetweenSoldAndRemod => YrSold - YearRemodAdd
+3. GapBetweenSoldAndBuilt => YrSold - YearBuilt
+4. HasBeenRenovate => GapBetweenRemodAndBuilt > 1
+5. SoldAfterRenovate => HasBeenRenovate & GapBetweenSoldAndRemod > 0
+6. IsSoldBeforeRenovate => GapBetweenSoldAndRemod < 0
+7. IsSoldImmediately => GapBetweenRemodAndBuilt == 0 & GapBetweenSoldAndRemod == 0
+8. OverallQualCategory => assumed, OverallQual with value:
+a. 1-5 => Poor
+b. 6-7 => Good
+c. 8-10 => Perfect
+9. OverallQualCategoryNum =>
+a. Poor => 0
+b. Good => 1
+c. Perfect => 2
+10. HouseStyle => assumed YearRemodAdd with value:
+a <= 2000 => Classical
+b. > 2000 => Modern
+11. HouseStyleNum =>
+a. Classical => 0
+b. Modern => 1
+```{r}
+new_data_set = data_set %>% 
+  select(YearBuilt, OverallQual, YearRemodAdd, YrSold, MoSold)
+
+new_data_set %>% 
+  mutate(
+    GapBetweenRemodAndBuilt = YearRemodAdd - YearBuilt,
+    GapBetweenSoldAndRemod = YrSold - YearRemodAdd,
+    GapBetweenSoldAndBuilt = YrSold - YearBuilt,
+    HasBeenRenovate = ifelse(GapBetweenRemodAndBuilt > 1, 1, 0),
+    SoldAfterRenovate = ifelse(HasBeenRenovate & GapBetweenSoldAndRemod > 0, 1, 0),
+    IsSoldBeforeRenovate = ifelse(GapBetweenSoldAndRemod < 0, 1, 0),
+    IsSoldImmediately = ifelse(GapBetweenRemodAndBuilt == 0 & GapBetweenSoldAndRemod == 0, 1, 0),
+    OverallQualCategory = case_when(
+      OverallQual <= 5 ~ "Poor",
+      OverallQual > 5 & OverallQual <= 7 ~ "Good",
+      OverallQual > 7 ~ "Perfect"
+    ),
+    OverallQualCategoryNum = case_when(
+      OverallQualCategory == "Poor" ~ 0,
+      OverallQualCategory == "Good" ~ 1,
+      OverallQualCategory == "Perfect" ~ 2,
+    ),
+    HouseStyle = case_when(
+      YearRemodAdd <= 2000 ~ "Classical",
+      YearRemodAdd > 2000 ~ "Modern",
+    ),
+    HouseStyleNum = case_when(
+      HouseStyle == "Classical" ~ 0,
+      HouseStyle == "Modern" ~ 1,
+    )
+  )
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
